@@ -157,7 +157,8 @@ if __name__ == "__main__":
                       enc_blk_nums=[1, 1, 1, 1], dec_blk_nums=[1, 1, 1, 1])
     net.to(device)
 
-    train_data_path = 'autodl-fs/simu_test/PDNet'
+    # UMNet học từ ảnh train đã được PNNet chuẩn hoá.
+    train_data_path = 'autodl-fs/simu_train/PNNet'
     train_net(net, device, train_data_path, criterion=physics_driven_loss(),
               csv_name="excel/UMNet.csv",
               lr=1.5e-3)  # Có thể điều chỉnh learning rate để hội tụ ổn định hơn.

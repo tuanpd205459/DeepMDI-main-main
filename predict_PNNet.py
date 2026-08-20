@@ -1,6 +1,7 @@
 import glob
 import os
 import re
+import argparse
 import numpy as np
 import torch
 import cv2
@@ -32,7 +33,12 @@ criterion = F.l1_loss  # Hàm loss.
 loss_list = []
 
 # -------------------- Đường dẫn dữ liệu --------------------
-tests_path1 = glob.glob('autodl-fs/simu_test/frame1/*.png')
+parser = argparse.ArgumentParser(description="Chạy PNNet cho dữ liệu train hoặc test.")
+parser.add_argument("--data-folder", default="simu_test", choices=["simu_train", "simu_test"],
+                    help="Tên thư mục dữ liệu trong autodl-fs.")
+args = parser.parse_args()
+data_folder = args.data_folder
+tests_path1 = glob.glob(f'autodl-fs/{data_folder}/frame1/*.png')
 tests_path1_sorted = sorted(
     tests_path1, key=lambda x: int(re.search(r'(\d+)', os.path.basename(x)).group())
 )

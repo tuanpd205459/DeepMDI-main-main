@@ -84,9 +84,11 @@ This step trains the normalization network using self-supervised learning to pre
 
 #### Step 2: Training UMNet (Model-driven Phase Retrieval Network)
 ```bash
+# Tạo ảnh chuẩn hoá của train set bằng PNNet trước
+python predict_PNNet.py --data-folder simu_train
 python train_UMNet.py
 ```
-This step trains the phase retrieval network using physics-informed loss functions and the pre-trained PNNet weights.
+This step trains the phase retrieval network using physics-informed loss functions and the PNNet-normalized training images.
 
 ### Inference
 
@@ -161,6 +163,5 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ## Acknowledgments
 
 - NAFNet architecture from "Simple Baselines for Image Restoration" by Chen et al.
-
 
 
