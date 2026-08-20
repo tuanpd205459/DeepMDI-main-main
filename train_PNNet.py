@@ -14,6 +14,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import optim
+from torch.cuda.amp import GradScaler, autocast
 
 from NAFNet_arch import NAFNet_arch
 from utils.dataset_PNNet import ISBI_Loader
@@ -27,10 +28,11 @@ os.environ['PYTHONHASHSEED'] = str(seed_value)
 torch.manual_seed(seed_value)
 torch.cuda.manual_seed(seed_value)
 torch.cuda.manual_seed_all(seed_value)
-torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.deterministic = False   # Tắt để benchmark hoạt động
+torch.backends.cudnn.benchmark = True        # Tự chọn kernel CUDA nhanh nhất
 
 # -------------------- Hàm huấn luyện --------------------
-def train_net(net, device, train_data_path, csv_name, criterion, epochs=300, batch_size=8, lr=1e-3, model_path='model/PNNet.pth'):
+def train_net(net, device, train_data_path, csv_name, criterion, epochs=300, batch_size=32, lr=1e-3, model_path='model/PNNet.pth'):
     """
     Huấn luyện mạng chuẩn hoá bằng L1 loss.
     """
@@ -56,10 +58,12 @@ def train_net(net, device, train_data_path, csv_name, criterion, epochs=300, bat
     train_dataset, val_dataset = torch.utils.data.random_split(all_dataset, [train_size, val_size])
 
     train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=batch_size, shuffle=True, drop_last=True, num_workers=4
+        train_dataset, batch_size=batch_size, shuffle=True, drop_last=True,
+        num_workers=8, pin_memory=True, persistent_workers=True
     )
     val_loader = torch.utils.data.DataLoader(
-        val_dataset, batch_size=batch_size, shuffle=False, drop_last=True, num_workers=4
+        val_dataset, batch_size=batch_size, shuffle=False, drop_last=True,
+        num_workers=8, pin_memory=True, persistent_workers=True
     )
 
     # -------------------- Optimizer và scheduler --------------------
@@ -67,6 +71,9 @@ def train_net(net, device, train_data_path, csv_name, criterion, epochs=300, bat
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
 
     best_val_loss = float('inf')
+
+    # AMP scaler cho mixed precision.
+    scaler = GradScaler()
 
     # Khởi tạo file CSV lưu lịch sử loss.
     if not os.path.exists(csv_name):
@@ -81,14 +88,16 @@ def train_net(net, device, train_data_path, csv_name, criterion, epochs=300, bat
         train_losses = []
 
         for image, label in train_loader:
-            image = image.to(device, dtype=torch.float32)
-            label = label.to(device, dtype=torch.float32)
+            image = image.to(device, dtype=torch.float32, non_blocking=True)
+            label = label.to(device, dtype=torch.float32, non_blocking=True)
 
-            optimizer.zero_grad()
-            pred = net(image)
-            loss = F.l1_loss(pred, label)
-            loss.backward()
-            optimizer.step()
+            optimizer.zero_grad(set_to_none=True)
+            with autocast():
+                pred = net(image)
+                loss = F.l1_loss(pred, label)
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
 
             train_losses.append(loss.item())
 
@@ -102,10 +111,11 @@ def train_net(net, device, train_data_path, csv_name, criterion, epochs=300, bat
 
         with torch.no_grad():
             for image, label in val_loader:
-                image = image.to(device, dtype=torch.float32)
-                label = label.to(device, dtype=torch.float32)
-                pred = net(image)
-                val_loss = criterion(pred, label)
+                image = image.to(device, dtype=torch.float32, non_blocking=True)
+                label = label.to(device, dtype=torch.float32, non_blocking=True)
+                with autocast():
+                    pred = net(image)
+                    val_loss = criterion(pred, label)
                 val_losses.append(val_loss.item())
 
         val_loss_mean = np.mean(val_losses)
@@ -123,17 +133,23 @@ def train_net(net, device, train_data_path, csv_name, criterion, epochs=300, bat
 # -------------------- Chương trình chính --------------------
 if __name__ == "__main__":
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"Device: {device}")
+    if device.type == 'cuda':
+        print(f"GPU: {torch.cuda.get_device_name(0)}")
 
-    # Khai báo model NAFNet.
+    # Khai báo model NAFNet — tăng width để tận dụng VRAM 16GB.
     img_channel = 2
     net = NAFNet_arch(
         in_channel=img_channel,
         out_channel=img_channel,
-        width=16,
-        middle_blk_num=1,
-        enc_blk_nums=[1, 1, 1, 1],
-        dec_blk_nums=[1, 1, 1, 1]
+        width=32,                        # Tăng từ 16 → 32
+        middle_blk_num=2,               # Tăng từ 1 → 2
+        enc_blk_nums=[2, 2, 2, 2],     # Tăng từ [1,1,1,1]
+        dec_blk_nums=[2, 2, 2, 2]
     ).to(device)
+
+    total_params = sum(p.numel() for p in net.parameters()) / 1e6
+    print(f"Model parameters: {total_params:.2f}M")
 
     # Điểm bắt đầu huấn luyện.
     train_data_path = 'autodl-fs/simu_train'
@@ -143,7 +159,7 @@ if __name__ == "__main__":
         train_data_path,
         criterion=F.l1_loss,
         csv_name="excel/PNNet.csv",
-        batch_size=8,
-        lr=1e-3,  # Có thể điều chỉnh learning rate để hội tụ ổn định hơn.
+        batch_size=32,                   # Tăng từ 8 → 32
+        lr=1e-3,
         model_path='model/PNNet.pth'
     )
