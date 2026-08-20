@@ -10,6 +10,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import optim
+from torch.cuda.amp import GradScaler, autocast
 
 from utils.dataset_UMNet import ISBI_Loader
 from Physics_loss import physics_driven_loss, fit_linear_delta_plane
@@ -24,10 +25,11 @@ os.environ['PYTHONHASHSEED'] = str(seed_value)
 torch.manual_seed(seed_value)
 torch.cuda.manual_seed(seed_value)
 torch.cuda.manual_seed_all(seed_value)
-torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.deterministic = False   # Tắt để benchmark hoạt động
+torch.backends.cudnn.benchmark = True        # Tự chọn kernel CUDA nhanh nhất
 
 # -------------------- Siêu tham số --------------------
-batch_size = 8
+batch_size = 32
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # -------------------- Mask hình tròn --------------------
