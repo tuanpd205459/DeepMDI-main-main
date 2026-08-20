@@ -66,12 +66,16 @@ def train_net(net, device, train_data_path, csv_name, criterion, epochs=301, bat
     train_size = int(len(all_dataset) * 1)
     train_dataset, val_dataset = torch.utils.data.random_split(all_dataset, [train_size, len(all_dataset) - train_size])
 
-    train_loader = torch.utils.data.DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True, drop_last=True, num_workers=4)
+    train_loader = torch.utils.data.DataLoader(
+        dataset=train_dataset, batch_size=batch_size, shuffle=True, drop_last=True,
+        num_workers=8, pin_memory=True, persistent_workers=True
+    )
 
     optimizer = optim.Adam(net.parameters(), lr=lr, betas=(0.9, 0.999))
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
 
     val_best_loss = float('inf')
+    scaler = GradScaler()  # AMP scaler
 
     # Tạo file CSV để lưu lịch sử loss.
     if not os.path.exists(csv_name):
@@ -85,14 +89,16 @@ def train_net(net, device, train_data_path, csv_name, criterion, epochs=301, bat
         print(f"Epoch {epoch} - Time: {datetime.datetime.now()}")
 
         for image in train_loader:
-            optimizer.zero_grad()
-            image = image.to(device, dtype=torch.float32)
+            image = image.to(device, dtype=torch.float32, non_blocking=True)
 
-            pred = net(image)
-            loss = criterion(pred, image, circle3)
+            optimizer.zero_grad(set_to_none=True)
+            with autocast():
+                pred = net(image)
+                loss = criterion(pred, image, circle3)
 
-            loss.backward()
-            optimizer.step()
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
             epoch_losses.append(loss.item())
 
         scheduler.step()
@@ -155,12 +161,24 @@ def train_net(net, device, train_data_path, csv_name, criterion, epochs=301, bat
 # -------------------- Chương trình chính --------------------
 if __name__ == "__main__":
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    net = NAFNet_arch(in_channel=2, out_channel=2, width=16, middle_blk_num=1,
-                      enc_blk_nums=[1, 1, 1, 1], dec_blk_nums=[1, 1, 1, 1])
+    print(f"Device: {device}")
+    if device.type == 'cuda':
+        print(f"GPU: {torch.cuda.get_device_name(0)}")
+
+    net = NAFNet_arch(
+        in_channel=2, out_channel=2,
+        width=32,                       # Tăng từ 16 → 32
+        middle_blk_num=2,              # Tăng từ 1 → 2
+        enc_blk_nums=[2, 2, 2, 2],    # Tăng từ [1,1,1,1]
+        dec_blk_nums=[2, 2, 2, 2]
+    )
     net.to(device)
+
+    total_params = sum(p.numel() for p in net.parameters()) / 1e6
+    print(f"Model parameters: {total_params:.2f}M")
 
     # UMNet học từ ảnh train đã được PNNet chuẩn hoá.
     train_data_path = 'autodl-fs/simu_train/PNNet'
     train_net(net, device, train_data_path, criterion=physics_driven_loss(),
               csv_name="excel/UMNet.csv",
-              lr=1.5e-3)  # Có thể điều chỉnh learning rate để hội tụ ổn định hơn.
+              lr=1.5e-3)
