@@ -10,7 +10,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import optim
-from torch.cuda.amp import GradScaler, autocast
+from torch.amp import autocast, GradScaler
 
 from utils.dataset_UMNet import ISBI_Loader
 from Physics_loss import physics_driven_loss, fit_linear_delta_plane

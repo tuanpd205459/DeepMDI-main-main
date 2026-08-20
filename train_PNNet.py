@@ -92,7 +92,7 @@ def train_net(net, device, train_data_path, csv_name, criterion, epochs=300, bat
             label = label.to(device, dtype=torch.float32, non_blocking=True)
 
             optimizer.zero_grad(set_to_none=True)
-            with autocast():
+            with autocast('cuda'):
                 pred = net(image)
                 loss = F.l1_loss(pred, label)
             scaler.scale(loss).backward()
@@ -113,7 +113,7 @@ def train_net(net, device, train_data_path, csv_name, criterion, epochs=300, bat
             for image, label in val_loader:
                 image = image.to(device, dtype=torch.float32, non_blocking=True)
                 label = label.to(device, dtype=torch.float32, non_blocking=True)
-                with autocast():
+                with autocast('cuda'):
                     pred = net(image)
                     val_loss = criterion(pred, label)
                 val_losses.append(val_loss.item())
