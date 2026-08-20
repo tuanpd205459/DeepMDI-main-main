@@ -92,7 +92,7 @@ def train_net(net, device, train_data_path, csv_name, criterion, epochs=301, bat
             image = image.to(device, dtype=torch.float32, non_blocking=True)
 
             optimizer.zero_grad(set_to_none=True)
-            with autocast():
+            with autocast('cuda'):
                 pred = net(image)
                 loss = criterion(pred, image, circle3)
 
