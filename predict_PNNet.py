@@ -57,14 +57,19 @@ for test_path in tests_path1_sorted:
     # -------------------- Nạp ảnh --------------------
     img1 = cv2.imread(test_path, cv2.IMREAD_UNCHANGED)
     img2 = cv2.imread(test_path2, cv2.IMREAD_UNCHANGED)
+    # Các ảnh ground‑truth (frame*_n) chỉ có trong quá trình training để tính loss.
+    # Khi chạy inference, chúng có thể không tồn tại → bỏ qua.
     lab1 = cv2.imread(lab_path1, cv2.IMREAD_UNCHANGED)
     lab2 = cv2.imread(lab_path2, cv2.IMREAD_UNCHANGED)
 
-    # Chuẩn hoá về [0, 1].
+    # Chuẩn hoá ảnh đầu vào về dải [0, 1]
     img1 = img1 / 65535.0 if img1.max() > 255 else img1 / 255.0
     img2 = img2 / 65535.0 if img2.max() > 255 else img2 / 255.0
-    lab1 = lab1 / 65535.0 if lab1.max() > 255 else lab1 / 255.0
-    lab2 = lab2 / 65535.0 if lab2.max() > 255 else lab2 / 255.0
+    # Nếu lab1/lab2 tồn tại, chuẩn hoá chúng; nếu không, để lại None
+    if lab1 is not None:
+        lab1 = lab1 / 65535.0 if lab1.max() > 255 else lab1 / 255.0
+    if lab2 is not None:
+        lab2 = lab2 / 65535.0 if lab2.max() > 255 else lab2 / 255.0
 
     # Thêm chiều batch và chiều kênh.
     img1 = img1.reshape(1, 1, img1.shape[0], img1.shape[1])
